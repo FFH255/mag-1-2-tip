@@ -15,8 +15,8 @@ type App struct {
 	server *httpx.Server
 }
 
-func New() *App {
-	config, err := parseConfig("services/auth/.env")
+func New(envFilePath string) *App {
+	config, err := parseConfig(envFilePath)
 	if err != nil {
 		panic(err)
 	}
