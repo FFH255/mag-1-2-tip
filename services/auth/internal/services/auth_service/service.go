@@ -15,6 +15,8 @@ var (
 	UserAlreadyExistsError = fmt.Errorf("user already exists")
 )
 
+const expireDuration = time.Hour
+
 type Service struct {
 	secret         string
 	expireDuration time.Duration
@@ -27,7 +29,7 @@ type userRepository interface {
 	Save(ctx context.Context, user *models.User) error
 }
 
-func New(secret string, expireDuration time.Duration, userRepository userRepository) Service {
+func New(secret string, userRepository userRepository) Service {
 	return Service{
 		userRepository: userRepository,
 		secret:         secret,

@@ -16,11 +16,14 @@ type App struct {
 }
 
 func New() *App {
-	config := newConfig()
+	config, err := parseConfig("services/auth/.env")
+	if err != nil {
+		panic(err)
+	}
 
 	usersRepository := users_repository.New()
 
-	authService := auth_service.New(config.JWTSecret, config.JWTExpirationDuration, usersRepository)
+	authService := auth_service.New(config.JWTSecret, usersRepository)
 
 	v1AuthLoginPostHandler := v1_auth_login_post_handler.New(authService)
 
