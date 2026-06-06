@@ -1,18 +1,17 @@
-package auth_repository
+package users_repository
 
 import (
 	"context"
 	"fmt"
-
-	"github.com/FFH255/mag-1-2-tip/services/auth/models"
+	"github.com/FFH255/mag-1-2-tip/services/auth/internal/models"
 )
 
 type Repository struct {
 	users map[string]models.User
 }
 
-func New() Repository {
-	return Repository{
+func New() *Repository {
+	return &Repository{
 		users: make(map[string]models.User),
 	}
 }

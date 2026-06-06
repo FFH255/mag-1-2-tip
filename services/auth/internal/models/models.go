@@ -12,7 +12,21 @@ func NewUser(login, password string) *User {
 	}
 }
 
-type Token string
+type AccessToken string
+
+func (t AccessToken) String() string {
+	return string(t)
+}
+
+type AccessTokenType string
+
+func (t AccessTokenType) String() string {
+	return string(t)
+}
+
+const (
+	BearerAccessTokenType AccessTokenType = "Bearer"
+)
 
 type Payload struct {
 	Login string `json:"login"`

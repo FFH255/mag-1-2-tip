@@ -1,6 +1,8 @@
 package httpx
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -21,6 +23,18 @@ func WriteError(c *gin.Context, status int, err any) {
 	c.AbortWithStatusJSON(status, response)
 }
 
+func WriteBadRequestError(c *gin.Context, err error) {
+	WriteError(c, http.StatusBadRequest, err)
+}
+
+func WriteInternalServerError(c *gin.Context, err error) {
+	WriteError(c, http.StatusInternalServerError, err)
+}
+
 func WriteJSON[V any](c *gin.Context, status int, v V) {
 	c.JSON(status, v)
+}
+
+func WriteOk[V any](c *gin.Context, v V) {
+	WriteJSON[V](c, http.StatusOK, v)
 }
