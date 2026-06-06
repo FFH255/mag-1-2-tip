@@ -1,4 +1,4 @@
-module github.com/FFH255/map-1-2-tip/shared/jwt
+module github.com/FFH255/mag-1-2-tip/shared/jwt
 
 go 1.25.0
 
