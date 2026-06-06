@@ -31,6 +31,14 @@ func WriteInternalServerError(c *gin.Context, err error) {
 	WriteError(c, http.StatusInternalServerError, err)
 }
 
+func WriteNotFoundError(c *gin.Context, err error) {
+	WriteError(c, http.StatusNotFound, err)
+}
+
+func WriteUnauthorizedError(c *gin.Context, err error) {
+	WriteError(c, http.StatusUnauthorized, err)
+}
+
 func WriteJSON[V any](c *gin.Context, status int, v V) {
 	c.JSON(status, v)
 }

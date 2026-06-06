@@ -2,7 +2,7 @@ package users_repository
 
 import (
 	"context"
-	"fmt"
+
 	"github.com/FFH255/mag-1-2-tip/services/auth/internal/models"
 )
 
@@ -25,7 +25,7 @@ func (r *Repository) Exists(ctx context.Context, login string) (bool, error) {
 func (r *Repository) GetByLogin(ctx context.Context, login string) (*models.User, error) {
 	user, exists := r.users[login]
 	if !exists {
-		return nil, fmt.Errorf("user with login %s not found", login)
+		return nil, nil
 	}
 
 	return &user, nil

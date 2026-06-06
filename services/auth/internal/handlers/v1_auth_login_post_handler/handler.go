@@ -2,11 +2,13 @@ package v1_auth_login_post_handler
 
 import (
 	"context"
-	"github.com/FFH255/mag-1-2-tip/services/auth/internal/models"
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/FFH255/mag-1-2-tip/services/auth/internal/models"
+	"github.com/FFH255/mag-1-2-tip/services/auth/internal/services/auth_service"
 	"github.com/FFH255/mag-1-2-tip/shared/httpx"
 )
 
@@ -37,7 +39,7 @@ func (h Handler) Handle(c *gin.Context) {
 
 	accessToken, accessTokenType, err := h.service.Login(ctx, requestBody.Login, requestBody.Password)
 	if err != nil {
-		httpx.WriteInternalServerError(c, err)
+		handleError(c, err)
 		return
 	}
 
@@ -51,4 +53,15 @@ func (h Handler) Path() string {
 
 func (h Handler) Method() string {
 	return http.MethodPost
+}
+
+func handleError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, auth_service.UserNotFoundError):
+		httpx.WriteNotFoundError(c, err)
+	case errors.Is(err, auth_service.IncorrectPasswordError):
+		httpx.WriteUnauthorizedError(c, err)
+	default:
+		httpx.WriteInternalServerError(c, err)
+	}
 }

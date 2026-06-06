@@ -9,8 +9,8 @@ import (
 )
 
 var (
-	InvalidAccessTokenError = errors.New("[invalid access token]")
-	ExpiredAccessTokenError = errors.New("[expired access token]")
+	InvalidAccessTokenError = errors.New("invalid access token")
+	ExpiredAccessTokenError = errors.New("expired access token")
 
 	signingMethod = jwt.SigningMethodHS256
 	issuer        = "vvadfadeev"

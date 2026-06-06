@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	envFilePath := flag.String("env-file", "services/auth/.env", "path to .env file")
+	envFilePath := flag.String("env-file", ".env", "path to .env file")
 	flag.Parse()
 
 	app.New(*envFilePath).Run(context.Background())
