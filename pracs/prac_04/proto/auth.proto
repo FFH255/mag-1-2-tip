@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package auth.v1;
+
+option go_package = "example.com/tech-ip-proto/gen/auth/v1;authv1";
+
+message VerifyRequest {
+  string token = 1;
+}
+
+message VerifyResponse {
+  bool valid = 1;
+  string subject = 2;
+}
+
+service AuthService {
+  rpc Verify(VerifyRequest) returns (VerifyResponse);
+}
