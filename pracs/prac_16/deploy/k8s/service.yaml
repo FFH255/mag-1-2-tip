@@ -1,0 +1,23 @@
+# Service сервиса tasks (ПЗ №16).
+#
+# Тип ClusterIP — доступ ВНУТРИ кластера (методичка §7, рекомендация). Наружу
+# для демонстрации ходим через `kubectl port-forward svc/tasks 8082:8082`
+# (см. §16.8) — это не требует NodePort/Ingress и работает в любом кластере.
+#
+# Зачем Service, а не «ходить прямо в pod»: pod эфемерен (его IP меняется при
+# пересоздании/масштабировании), а Service даёт стабильные имя+VIP и сам
+# балансирует трафик по готовым (Ready) репликам по селектору app=tasks.
+apiVersion: v1
+kind: Service
+metadata:
+  name: tasks
+  labels:
+    app: tasks
+spec:
+  type: ClusterIP
+  selector:
+    app: tasks
+  ports:
+    - name: http
+      port: 8082
+      targetPort: http

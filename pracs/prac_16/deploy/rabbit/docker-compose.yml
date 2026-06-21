@@ -1,0 +1,41 @@
+# Учебный RabbitMQ-стенд для ПЗ №13 — один брокер RabbitMQ с management UI.
+#
+# Этого достаточно для базовой работы с очередями: producer (сервис tasks)
+# публикует событие в очередь task_events, а consumer (services/worker) её читает
+# и подтверждает обработку (ack). Сложная маршрутизация exchange'ами здесь не
+# нужна — одна durable-очередь и публикация в неё.
+#
+# Запуск:    cd deploy/rabbit && docker compose up -d
+# Проверка:  docker compose ps
+# UI:        http://localhost:15672  (логин guest / пароль guest)
+# Остановка: docker compose down
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: pz13_rabbit
+    restart: unless-stopped
+    environment:
+      # Учебные дефолтные креды. amqp://guest:guest@localhost:5672/
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      # 5672  — AMQP-протокол (сюда подключаются producer/consumer).
+      # 15672 — management UI и HTTP API (мониторинг очередей и сообщений).
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      # durable-очередь и persistent-сообщения переживают рестарт брокера только
+      # вместе с этим томом — данные брокера хранятся здесь.
+      - rabbit_data:/var/lib/rabbitmq
+    healthcheck:
+      # check_port_connectivity дожидается готовности слушателя AMQP (5672):
+      # обычный ping помечает брокер healthy раньше, чем listener начнёт
+      # принимать соединения.
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+
+volumes:
+  rabbit_data:

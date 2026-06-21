@@ -1,0 +1,105 @@
+# Postgres для стенда ПЗ №16.
+#
+# Зачем он здесь. Сервис tasks Fatal-ит на старте, если не может приконнектиться
+# к БД (main.go:65-67), поэтому без Postgres pod ушёл бы в CrashLoopBackOff и
+# никогда не стал бы Ready. Чтобы readiness/liveness демонстрировались честно
+# (pod реально Running/Ready, /health → 200), БД поднимаем в том же кластере.
+#
+# Это УЧЕБНЫЙ Postgres: данные в emptyDir (эфемерные, исчезают с подом). Для
+# минимального стенда этого достаточно; в проде была бы PVC/StatefulSet.
+---
+# Init-миграция (создаёт таблицу tasks) — монтируется в /docker-entrypoint-initdb.d.
+# Для /health таблица не нужна (health не ходит в БД), но с ней стенд полноценен:
+# работают и /v1/tasks. Это копия services/tasks/migrations/001_tasks.sql.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tasks-db-init
+  labels:
+    app: tasks-db
+data:
+  001_tasks.sql: |
+    CREATE TABLE IF NOT EXISTS tasks (
+        id          TEXT PRIMARY KEY,
+        title       TEXT        NOT NULL,
+        description TEXT        NOT NULL DEFAULT '',
+        due_date    TEXT        NOT NULL DEFAULT '',
+        done        BOOLEAN     NOT NULL DEFAULT FALSE,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS tasks_title_idx ON tasks (title);
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tasks-db
+  labels:
+    app: tasks-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tasks-db
+  template:
+    metadata:
+      labels:
+        app: tasks-db
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            # Креды берём из того же Secret, что и DSN сервиса tasks.
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: tasks-secret
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: tasks-secret
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: tasks-secret
+                  key: POSTGRES_DB
+            # Кладём данные в подкаталог: чтобы initdb не спорил с точкой монтирования.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "tasks", "-d", "tasks"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: init
+          configMap:
+            name: tasks-db-init
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tasks-db
+  labels:
+    app: tasks-db
+spec:
+  type: ClusterIP
+  selector:
+    app: tasks-db
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432

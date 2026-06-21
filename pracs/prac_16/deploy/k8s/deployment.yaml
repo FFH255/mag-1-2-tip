@@ -1,0 +1,89 @@
+# Deployment сервиса tasks (ПЗ №16).
+#
+# Что показывает этот манифест (по методичке §6):
+#   - image с ФИКСИРУЕМЫМ тегом techip-tasks:0.1 (не latest);
+#   - imagePullPolicy: IfNotPresent — образ загружен в кластер локально
+#     (minikube image load / kind load), pull из registry НЕ нужен;
+#   - env из ConfigMap (envFrom) + DSN из Secret (отдельно от несекретных env);
+#   - readiness/liveness probes на GET /health;
+#   - INSTANCE_ID из имени пода (Downward API) — для демонстрации масштабирования.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tasks
+  labels:
+    app: tasks
+spec:
+  # 1 реплика по умолчанию; в §16.9 масштабируем до 2 (kubectl scale).
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tasks
+  template:
+    metadata:
+      labels:
+        app: tasks
+    spec:
+      # Безопасность: контейнер уже собран под non-root (USER app, uid 10001 в
+      # services/tasks/Dockerfile). Дублируем намерение на уровне пода и режем
+      # привилегии — это не ломает сервис (он только слушает порт и пишет в stdout).
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: tasks
+          image: techip-tasks:0.1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8082
+          # Несекретные параметры — пачкой из ConfigMap...
+          envFrom:
+            - configMapRef:
+                name: tasks-config
+          env:
+            # ...секрет (DSN с паролем) — отдельной ссылкой на Secret.
+            - name: TASKS_DB_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: tasks-secret
+                  key: TASKS_DB_DSN
+            # Имя пода как идентификатор реплики: каждая реплика отвечает своим
+            # X-Instance-Id (видно, какой pod ответил, — пригодится при scale=2).
+            - name: INSTANCE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          # Readiness: готов ли pod принимать трафик. Пока проба красная — Service
+          # не шлёт на этот pod запросы (см. §16 контрольный вопрос 3).
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          # Liveness: жив ли процесс. Для учебной работы — тот же /health.
+          # Чуть позже и реже readiness, чтобы не убивать pod на ровном месте.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
