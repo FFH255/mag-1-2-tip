@@ -1,0 +1,54 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: pz7_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tasks
+      POSTGRES_PASSWORD: tasks
+      POSTGRES_DB: tasks
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ../services/tasks/migrations/001_tasks.sql:/docker-entrypoint-initdb.d/001_tasks.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tasks -d tasks"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  auth:
+    build:
+      context: ..
+      dockerfile: services/auth/Dockerfile
+    image: techip-auth:0.1
+    container_name: pz7_auth
+    restart: unless-stopped
+    environment:
+      AUTH_PORT: "8085"
+      AUTH_GRPC_PORT: "50051"
+    ports:
+      # Прокидываем наружу только для удобства ручной проверки.
+      - "8085:8085"
+
+  tasks:
+    build:
+      context: ..
+      dockerfile: services/tasks/Dockerfile
+    image: techip-tasks:0.1
+    container_name: pz7_tasks
+    restart: unless-stopped
+    environment:
+      TASKS_PORT: "8082"
+      # Внутри docker-сети сервисы видят друг друга по имени из compose.
+      AUTH_GRPC_ADDR: "auth:50051"
+      TASKS_DB_DSN: "postgres://tasks:tasks@db:5432/tasks?sslmode=disable"
+    ports:
+      - "8082:8082"
+    depends_on:
+      db:
+        condition: service_healthy
+      auth:
+        condition: service_started
+
+volumes:
+  db_data:
