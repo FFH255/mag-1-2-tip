@@ -1,0 +1,31 @@
+# VCS
+.git
+.gitignore
+.gitattributes
+
+# IDE / editor
+.idea
+.vscode
+*.swp
+
+# Build artefacts
+bin
+out
+tmp
+dist
+*.exe
+*.test
+*.out
+
+# Logs
+*.log
+
+# Docs / deployment artefacts (не нужны внутри образа сервиса)
+README.md
+docs
+deploy
+
+# Локальные переменные
+.env
+.env.*
+!.env.example

@@ -1,0 +1,79 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: pz7_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tasks
+      POSTGRES_PASSWORD: tasks
+      POSTGRES_DB: tasks
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ../services/tasks/migrations/001_tasks.sql:/docker-entrypoint-initdb.d/001_tasks.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tasks -d tasks"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  auth:
+    build:
+      context: ..
+      dockerfile: services/auth/Dockerfile
+    image: techip-auth:0.1
+    container_name: pz7_auth
+    restart: unless-stopped
+    environment:
+      AUTH_PORT: "8085"
+      AUTH_GRPC_PORT: "50051"
+    ports:
+      # Прокидываем наружу только для удобства ручной проверки.
+      - "8085:8085"
+
+  # ПЗ №9: распределённый кэш. Уровень A — один узел Redis. Сервис tasks
+  # использует его для cache-aside; при остановке этого контейнера сервис
+  # деградирует и продолжает работать через БД.
+  redis:
+    image: redis:7-alpine
+    container_name: pz9_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  tasks:
+    build:
+      context: ..
+      dockerfile: services/tasks/Dockerfile
+    image: techip-tasks:0.1
+    container_name: pz7_tasks
+    restart: unless-stopped
+    environment:
+      TASKS_PORT: "8082"
+      # Внутри docker-сети сервисы видят друг друга по имени из compose.
+      AUTH_GRPC_ADDR: "auth:50051"
+      TASKS_DB_DSN: "postgres://tasks:tasks@db:5432/tasks?sslmode=disable"
+      # Кэш Redis (ПЗ №9). Пустой REDIS_ADDR отключил бы кэш (DB-only режим).
+      REDIS_ADDR: "redis:6379"
+      CACHE_TTL_SECONDS: "120"
+      CACHE_TTL_JITTER_SECONDS: "30"
+    ports:
+      - "8082:8082"
+    depends_on:
+      db:
+        condition: service_healthy
+      auth:
+        condition: service_started
+      # Кэш необязателен, поэтому ждём только старта контейнера, не health.
+      # Даже если Redis не поднимется — tasks стартует в DB-only режиме.
+      redis:
+        condition: service_started
+
+volumes:
+  db_data:
+  redis_data:
