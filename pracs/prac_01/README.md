@@ -21,7 +21,7 @@
 
 ```
 git clone <URL_РЕПОЗИТОРИЯ>
-cd tech-ip-proto
+cd pracs/prac_01
 ```
 
 Команда запуска сервера:
@@ -37,7 +37,7 @@ go run ./services/tasks/cmd/tasks
 
 ## Структура проекта
 ```plaintext
-tech-ip-proto/
+prac_01/
 ├── go.mod
 ├── go.sum
 ├── cmd/
@@ -68,11 +68,7 @@ tech-ip-proto/
 │       └── middleware/
 │           ├── logging.go
 │           └── requestid.go
-├── docs/
-│   ├── pz1_api.md
-│   └── pz1_diagram.md
 ├── README.md
-└── .gitignore
 ```
 
 ## Границы ответственности
