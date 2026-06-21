@@ -1,0 +1,155 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: pz7_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tasks
+      POSTGRES_PASSWORD: tasks
+      POSTGRES_DB: tasks
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ../services/tasks/migrations/001_tasks.sql:/docker-entrypoint-initdb.d/001_tasks.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tasks -d tasks"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  auth:
+    build:
+      context: ..
+      dockerfile: services/auth/Dockerfile
+    image: techip-auth:0.1
+    container_name: pz7_auth
+    restart: unless-stopped
+    environment:
+      AUTH_PORT: "8085"
+      AUTH_GRPC_PORT: "50051"
+    ports:
+      # Прокидываем наружу только для удобства ручной проверки.
+      - "8085:8085"
+
+  # ПЗ №9: распределённый кэш. Уровень A — один узел Redis. Сервис tasks
+  # использует его для cache-aside; при остановке этого контейнера сервис
+  # деградирует и продолжает работать через БД.
+  redis:
+    image: redis:7-alpine
+    container_name: pz9_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  # ПЗ №13: брокер сообщений RabbitMQ. tasks (producer) публикует сюда событие
+  # task.created в очередь task_events, worker (consumer) её читает. Management UI
+  # на http://localhost:15672 (guest/guest).
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: pz13_rabbit
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbit_data:/var/lib/rabbitmq
+    healthcheck:
+      # check_port_connectivity дожидается, пока слушатель AMQP (5672) реально
+      # принимает соединения, — обычный ping помечает узел healthy раньше, чем
+      # listener готов, и зависимые сервисы получают connection refused.
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+
+  tasks:
+    build:
+      context: ..
+      dockerfile: services/tasks/Dockerfile
+    image: techip-tasks:0.1
+    container_name: pz7_tasks
+    restart: unless-stopped
+    environment:
+      TASKS_PORT: "8082"
+      # Внутри docker-сети сервисы видят друг друга по имени из compose.
+      AUTH_GRPC_ADDR: "auth:50051"
+      TASKS_DB_DSN: "postgres://tasks:tasks@db:5432/tasks?sslmode=disable"
+      # Кэш Redis (ПЗ №9). Пустой REDIS_ADDR отключил бы кэш (DB-only режим).
+      REDIS_ADDR: "redis:6379"
+      CACHE_TTL_SECONDS: "120"
+      CACHE_TTL_JITTER_SECONDS: "30"
+      # Брокер событий (ПЗ №13). Пустой RABBIT_URL отключил бы публикацию.
+      RABBIT_URL: "amqp://guest:guest@rabbitmq:5672/"
+      QUEUE_NAME: "task_events"
+    ports:
+      - "8082:8082"
+    depends_on:
+      db:
+        condition: service_healthy
+      auth:
+        condition: service_started
+      # Кэш необязателен, поэтому ждём только старта контейнера, не health.
+      # Даже если Redis не поднимется — tasks стартует в DB-only режиме.
+      redis:
+        condition: service_started
+      # Публикация необязательна (best-effort), но ждём готовности брокера,
+      # чтобы первое же событие после старта ушло без потерь.
+      rabbitmq:
+        condition: service_healthy
+
+  # ПЗ №13: consumer. Читает очередь task_events и логирует полученные события.
+  worker:
+    build:
+      context: ..
+      dockerfile: services/worker/Dockerfile
+    image: techip-worker:0.1
+    container_name: pz13_worker
+    restart: unless-stopped
+    environment:
+      RABBIT_URL: "amqp://guest:guest@rabbitmq:5672/"
+      QUEUE_NAME: "task_events"
+      # prefetch: сколько неподтверждённых сообщений брокер отдаёт worker'у сразу.
+      PREFETCH: "1"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  # ПЗ №11: GraphQL API (gqlgen). Использует ту же таблицу tasks в общем
+  # PostgreSQL, что и REST-сервис tasks, — единый источник истины для обоих API.
+  # Playground доступен на http://localhost:8090/, эндпоинт запросов — /query.
+  graphql:
+    build:
+      context: ..
+      dockerfile: services/graphql/Dockerfile
+    image: techip-graphql:0.1
+    container_name: pz11_graphql
+    restart: unless-stopped
+    environment:
+      GRAPHQL_PORT: "8090"
+      # Тот же PostgreSQL, что и у tasks → общий слой данных.
+      TASKS_DB_DSN: "postgres://tasks:tasks@db:5432/tasks?sslmode=disable"
+      # Авторизация мутаций (по умолчанию выключена). Чтобы включить, выставьте
+      # GRAPHQL_REQUIRE_AUTH=true — тогда мутации проверяют Bearer-токен через
+      # тот же gRPC Auth, что и REST.
+      GRAPHQL_REQUIRE_AUTH: "false"
+      AUTH_GRPC_ADDR: "auth:50051"
+    ports:
+      - "8090:8090"
+    depends_on:
+      db:
+        condition: service_healthy
+      auth:
+        condition: service_started
+
+volumes:
+  db_data:
+  redis_data:
+  rabbit_data:

@@ -1,0 +1,43 @@
+# GraphQL-схема сервиса задач (ПЗ №11).
+# Схема — это "контракт" API: клиент и сервер договариваются о типах и
+# операциях. Реализация контракта живёт в резолверах (schema.resolvers.go).
+
+"Задача — минимальная доменная модель."
+type Task {
+  id: ID!
+  title: String!
+  description: String
+  done: Boolean!
+}
+
+type Query {
+  "Список всех задач."
+  tasks: [Task!]!
+  "Одна задача по id; null, если не найдена (сервер при этом не падает)."
+  task(id: ID!): Task
+}
+
+"Вход для создания задачи. description необязателен."
+input CreateTaskInput {
+  title: String!
+  description: String
+}
+
+"""
+Вход для частичного обновления. Все поля необязательны:
+поле, переданное как null/опущенное, не меняет текущее значение.
+"""
+input UpdateTaskInput {
+  title: String
+  description: String
+  done: Boolean
+}
+
+type Mutation {
+  "Создаёт задачу и возвращает созданный объект."
+  createTask(input: CreateTaskInput!): Task!
+  "Обновляет переданные поля задачи и возвращает результат."
+  updateTask(id: ID!, input: UpdateTaskInput!): Task!
+  "Удаляет задачу; true — удалена, false — не найдена."
+  deleteTask(id: ID!): Boolean!
+}

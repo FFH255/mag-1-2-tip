@@ -1,0 +1,47 @@
+# Конфигурация gqlgen для сервиса graphql (ПЗ №11).
+# Пути указаны относительно каталога с этим файлом (services/graphql).
+
+# Где лежит GraphQL-схема ("контракт").
+schema:
+  - graph/*.graphqls
+
+# Автогенерируемый исполняемый код (типы, маршалинг, интерфейсы резолверов).
+# Его НЕ редактируют руками — он перегенерируется командой gqlgen generate.
+exec:
+  filename: graph/generated/generated.go
+  package: generated
+
+# Модели, которые gqlgen генерирует сам (входные типы Create/UpdateTaskInput).
+model:
+  filename: graph/model/models_gen.go
+  package: model
+
+# Куда складывать резолверы. follow-schema: на каждый .graphqls — свой
+# <name>.resolvers.go. Здесь схема одна, поэтому появится schema.resolvers.go,
+# где мы и дописываем бизнес-логику. Корневой Resolver — в resolver.go.
+resolver:
+  layout: follow-schema
+  dir: graph
+  package: graph
+  filename_template: "{name}.resolvers.go"
+
+# Тег для генерируемых структур.
+struct_tag: json
+
+# Привязка GraphQL-типов к Go-типам.
+models:
+  ID:
+    model:
+      - github.com/99designs/gqlgen/graphql.ID
+  Int:
+    model:
+      - github.com/99designs/gqlgen/graphql.Int
+      - github.com/99designs/gqlgen/graphql.Int64
+      - github.com/99designs/gqlgen/graphql.Int32
+  # GraphQL-тип Task маппится прямо на доменную модель service.Task этого
+  # сервиса — одна модель и для маршалинга в GraphQL, и для бизнес-логики.
+  # Лишнее для схемы поле модели (DueDate) gqlgen просто игнорирует.
+  # Общий с REST источник истины обеспечивается на уровне данных: postgres-
+  # репозиторий ходит в ту же таблицу tasks, что и сервис tasks.
+  Task:
+    model: prac_13/services/graphql/internal/service.Task
