@@ -1,0 +1,43 @@
+[Unit]
+Description=Tasks Service (REST API, ПЗ №15)
+Documentation=https://github.com/  # ссылка на репозиторий проекта
+# Сервис ходит наружу (Postgres/Redis/RabbitMQ/auth), поэтому ждём не просто
+# поднятия сетевого стека, а реальной готовности сети.
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+# Не запускаем от root — отдельный системный пользователь без shell и без $HOME.
+User=tasksuser
+Group=tasksuser
+WorkingDirectory=/opt/tasks
+# Конфиг и секреты — отдельным файлом, вне репозитория и вне бинарника.
+EnvironmentFile=/etc/tasks/tasks.env
+ExecStart=/opt/tasks/tasks
+# Перезапуск при любом падении (паника, OOM, ненулевой exit) с паузой 2 c,
+# чтобы не уйти в busy-loop, если процесс падает сразу на старте.
+Restart=always
+RestartSec=2
+
+# --- Безопасность (sandbox). Каждая строка сужает права процесса. ---
+# Процесс и его потомки не могут получить новые привилегии (setuid/capabilities).
+NoNewPrivileges=true
+# Почти вся ФС только для чтения; /usr, /boot, /etc недоступны на запись.
+ProtectSystem=strict
+# /home, /root, /run/user недоступны.
+ProtectHome=true
+# Приватный /tmp, изолированный от хоста.
+PrivateTmp=true
+# Скрыть физические устройства из /dev.
+PrivateDevices=true
+# Запретить доступ к cgroups/ядру.
+ProtectControlGroups=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+
+# --- Лимиты ресурсов (по желанию). ---
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
