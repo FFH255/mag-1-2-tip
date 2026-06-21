@@ -1,0 +1,31 @@
+# Учебный Redis-стенд для ПЗ №9 — Уровень A: один узел Redis (standalone).
+#
+# Этого достаточно для cache-aside в сервисе tasks: Redis здесь — "ускоритель",
+# а источник истины остаётся в PostgreSQL. Go-клиент написан так, что одинаково
+# работает и с одним узлом, и с кластером (см. docs/pz25_cache.md).
+#
+# Запуск:    cd deploy/redis && docker compose up -d
+# Проверка:  docker compose ps
+# Остановка: docker compose stop   (для симуляции недоступности кэша)
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: pz9_redis
+    restart: unless-stopped
+    # appendonly включаем, чтобы данные кэша переживали перезапуск контейнера
+    # (для кэша не критично, но удобно при ручной проверке hit/miss).
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      # Наружу — для подключения сервиса tasks, запущенного локально (REDIS_ADDR=localhost:6379).
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+volumes:
+  redis_data:
