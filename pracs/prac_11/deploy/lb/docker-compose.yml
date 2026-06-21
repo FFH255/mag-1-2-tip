@@ -1,0 +1,121 @@
+# ПЗ №10 — горизонтальное масштабирование сервиса tasks за балансировщиком NGINX.
+#
+# Состав стенда:
+#   nginx    — load balancer, единственный сервис с пробросом наружу (8080).
+#   tasks_1  \ две одинаковые реплики сервиса tasks. Наружу НЕ публикуются,
+#   tasks_2  / nginx ходит к ним по DNS-именам внутри сети (tasks_1:8082, tasks_2:8082).
+#   db       — общий PostgreSQL: единый источник данных для обеих реплик
+#              (так данные не "прыгают" между инстансами — см. требование stateless).
+#   auth     — gRPC-сервис авторизации (обе реплики проверяют токен в нём).
+#   redis    — общий кэш (cache-aside), тоже единый для всех реплик.
+#
+# Запуск:    cd deploy/lb && docker compose up -d --build
+# Проверка:  docker compose ps
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: pz10_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tasks
+      POSTGRES_PASSWORD: tasks
+      POSTGRES_DB: tasks
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ../../services/tasks/migrations/001_tasks.sql:/docker-entrypoint-initdb.d/001_tasks.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tasks -d tasks"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  auth:
+    build:
+      context: ../..
+      dockerfile: services/auth/Dockerfile
+    image: techip-auth:0.1
+    container_name: pz10_auth
+    restart: unless-stopped
+    environment:
+      AUTH_PORT: "8085"
+      AUTH_GRPC_PORT: "50051"
+
+  redis:
+    image: redis:7-alpine
+    container_name: pz10_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  # ───────────── Реплики сервиса tasks ─────────────
+  # Образ один и тот же (techip-tasks:0.1). Отличаются только INSTANCE_ID,
+  # который сервис отдаёт в заголовке X-Instance-ID. Порт наружу не пробрасываем.
+  tasks_1:
+    build:
+      context: ../..
+      dockerfile: services/tasks/Dockerfile
+    image: techip-tasks:0.1
+    container_name: pz10_tasks_1
+    restart: unless-stopped
+    environment:
+      TASKS_PORT: "8082"
+      INSTANCE_ID: "tasks-1"
+      AUTH_GRPC_ADDR: "auth:50051"
+      TASKS_DB_DSN: "postgres://tasks:tasks@db:5432/tasks?sslmode=disable"
+      REDIS_ADDR: "redis:6379"
+      CACHE_TTL_SECONDS: "120"
+      CACHE_TTL_JITTER_SECONDS: "30"
+    depends_on:
+      db:
+        condition: service_healthy
+      auth:
+        condition: service_started
+      redis:
+        condition: service_started
+
+  tasks_2:
+    build:
+      context: ../..
+      dockerfile: services/tasks/Dockerfile
+    image: techip-tasks:0.1
+    container_name: pz10_tasks_2
+    restart: unless-stopped
+    environment:
+      TASKS_PORT: "8082"
+      INSTANCE_ID: "tasks-2"
+      AUTH_GRPC_ADDR: "auth:50051"
+      TASKS_DB_DSN: "postgres://tasks:tasks@db:5432/tasks?sslmode=disable"
+      REDIS_ADDR: "redis:6379"
+      CACHE_TTL_SECONDS: "120"
+      CACHE_TTL_JITTER_SECONDS: "30"
+    depends_on:
+      db:
+        condition: service_healthy
+      auth:
+        condition: service_started
+      redis:
+        condition: service_started
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: pz10_nginx
+    restart: unless-stopped
+    ports:
+      # Единственная точка входа в стенд.
+      - "8080:8080"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - tasks_1
+      - tasks_2
+
+volumes:
+  db_data:
+  redis_data:
